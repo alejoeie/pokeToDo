@@ -1,0 +1,19 @@
+{
+  "name": "pokedo",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/start.js",
+    "dev": "node --env-file=.env --watch server/start.js",
+    "db:setup": "node --env-file=.env scripts/setup.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check app.js && node --check server/app.js && node --check scripts/setup.js"
+  },
+  "dependencies": {
+    "mongodb": "^6.0.0"
+  }
+}
