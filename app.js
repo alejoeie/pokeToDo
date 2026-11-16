@@ -7,19 +7,12 @@ const pokemon = [
   { id: 39, name: "Jigglypuff", type: "FAIRY" },
   { id: 133, name: "Eevee", type: "NORMAL" },
 ];
-// Store only the base companion; derive its form from the saved task status.
-const evolutionFamilies = {
-  1: [pokemon[0], {id:2,name:'Ivysaur',type:'GRASS'}, {id:3,name:'Venusaur',type:'GRASS'}],
-  4: [pokemon[1], {id:5,name:'Charmeleon',type:'FIRE'}, {id:6,name:'Charizard',type:'FIRE'}],
-  7: [pokemon[2], {id:8,name:'Wartortle',type:'WATER'}, {id:9,name:'Blastoise',type:'WATER'}],
-  252: [pokemon[4], {id:253,name:'Grovyle',type:'GRASS'}, {id:254,name:'Sceptile',type:'GRASS'}],
-  25: [pokemon[3], pokemon[3], {id:26,name:'Raichu',type:'ELECTRIC'}],
-  39: [pokemon[5], pokemon[5], {id:40,name:'Wigglytuff',type:'FAIRY'}],
-  133: [pokemon[6], pokemon[6], {id:134,name:'Vaporeon',type:'WATER'}],
-};
+// Shared cached metadata; no per-task API calls to PokéAPI.
+let pokemonById=new Map();
 const evolutionStage = status => status === 'done' ? 2 : status === 'progress' ? 1 : 0;
 function evolvedCompanion(task) {
-  return evolutionFamilies[task.companion]?.[evolutionStage(task.status)] || pokemon[0];
+  const base=pokemonById.get(task.companion);
+  return pokemonById.get(base?.stages[evolutionStage(task.status)]) || base || pokemon[0];
 }
 function evolutionTransition(previous, next) {
   const from=columns.findIndex(c=>c.id===previous.status), to=columns.findIndex(c=>c.id===next.status);
@@ -78,7 +71,7 @@ function showNextEvolution() {
   if(!next || !currentUser || currentUser.id!==next.owner)return;
   const {before,after,direction}=next;
   const backward=direction==='backward';
-  $('#evolution-content').innerHTML=`<p class="eyebrow">${backward?'TRY AGAIN':'EVOLUTION'}</p><h2 id="evolution-title">${before.id===after.id?after.name:`${before.name} → ${after.name}`}</h2><div class="evolution-stage ${backward?'is-devolving':''}" aria-hidden="true">${backward?'<span class="hit-mark">✹</span>':''}<div class="evolution-ring ring-one"></div><div class="evolution-ring ring-two"></div><span class="evolution-star star-one">✦</span><span class="evolution-star star-two">✧</span><span class="evolution-star star-three">✦</span><img class="evolution-before" src="${sprite(before.id)}" alt="" width="192" height="192" draggable="false"><img class="evolution-after" src="${sprite(after.id)}" alt="" width="192" height="192" draggable="false"></div><p id="evolution-message" role="status">${backward?`${before.name} took a hit!`:`${before.name} is evolving…`}</p><button type="button" class="primary" id="close-evolution">Continue</button>`;
+  $('#evolution-content').innerHTML=`<p class="eyebrow">${backward?'TRY AGAIN':'EVOLUTION'}</p><h2 id="evolution-title">${before.id===after.id?after.name:`${before.name} → ${after.name}`}</h2><div class="evolution-stage ${backward?'is-devolving':''}" aria-hidden="true">${backward?'<span class="hit-mark">✹</span>':''}<div class="evolution-ring ring-one"></div><div class="evolution-ring ring-two"></div><span class="evolution-star star-one">✦</span><span class="evolution-star star-two">✧</span><span class="evolution-star star-three">✦</span><img class="evolution-before" src="${sprite(before.spriteId || before.id)}" alt="" width="192" height="192" draggable="false"><img class="evolution-after" src="${sprite(after.spriteId || after.id)}" alt="" width="192" height="192" draggable="false"></div><p id="evolution-message" role="status">${backward?`${before.name} took a hit!`:`${before.name} is evolving…`}</p><button type="button" class="primary" id="close-evolution">Continue</button>`;
   $('#evolution-dialog').showModal();
   $('#close-evolution').onclick=()=>$('#evolution-dialog').close();
   clearTimeout(evolutionTimer);
@@ -151,7 +144,7 @@ const taskPayload = (t) => ({
   visibility: t.owner === "ours" ? "shared" : "personal",
   assigneeId: t.assigneeId ?? null,
   status: t.status,
-  companion: t.companion,
+  ...(t.companion ? {companion:t.companion}:{}),
   priority: t.priority,
   due: t.due,
   minutes: t.minutes,
@@ -249,7 +242,6 @@ async function startSession(user) {
   if (!starters[trainer]) openStarter();
 }
 function visibleTasks() {
-  if (scope === "yours") return [];
   return tasks
     .filter((t) => t.owner === (scope === "ours" ? "ours" : trainer))
     .filter((t) =>
@@ -267,18 +259,8 @@ function render() {
     .forEach((b) => b.setAttribute("aria-pressed", b.dataset.scope === scope));
   $("#sidebar-name").textContent = currentUser.name;
   $(".avatar").textContent = currentUser.name[0];
-  $("#scope-caption").textContent =
-    scope === "ours"
-      ? "Shared tasks"
-      : scope === "yours"
-        ? "Personal tasks are private."
-        : "Personal tasks";
-  $("#progress-summary").textContent =
-    scope === "yours"
-      ? ""
-      : `${visible.filter((t) => t.status === "done").length} / ${visible.length} done`;
-  $("#board").hidden = scope === "yours";
-  $("#private-view").hidden = scope !== "yours";
+  $('#scope-caption').textContent=scope==='ours'?'Shared tasks':'Personal tasks';
+  $('#progress-summary').textContent=`${visible.filter(t=>t.status==='done').length} / ${visible.length} done`;
   $("#board").innerHTML = columns
     .map((c) => {
       const items = visible.filter((t) => t.status === c.id);
@@ -303,7 +285,7 @@ function card(t) {
     done = t.steps.filter((s) => s.done).length,
     percent = t.steps.length ? Math.round((done / t.steps.length) * 100) : 0;
   const next = t.steps.find((s) => !s.done);
-  return `<article class="quest-card" draggable="true" data-task-id="${t.id}" aria-label="${escapeHTML(t.title)}; drag to a column or open task to change status"><button class="card-open" data-open="${t.id}" aria-label="Open ${escapeHTML(t.title)}"><div class="pokemon-line"><img src="${sprite(p.id)}" alt="${p.name}" loading="lazy" width="49" height="49" draggable="false"><div><strong>${p.name}</strong><small>${evolutionStage(t.status)===0?'Base':t.status==='done'?'Final form':'In progress'}</small></div></div><span class="type-badge">${p.type}</span><h3>${escapeHTML(t.title)}</h3><p class="next-step"><strong>Next step</strong><br>${escapeHTML(t.status === "done" ? "Done." : next?.text || "Add a next step.")}</p><div class="card-meta"><span class="priority ${t.priority.toLowerCase()}">${t.priority}</span><span class="priority">◷ ${t.minutes} min</span></div><div class="task-progress" aria-label="${percent}% checklist complete"><span style="width:${percent}%"></span></div></button><div class="card-footer"><span>Due ${escapeHTML(dateLabel(t.due))} · ${done}/${t.steps.length}</span>${t.status !== "done" ? `<button class="move-task" data-next="${t.id}">Next →</button>` : "<span>✓ Done</span>"}</div></article>`;
+  return `<article class="quest-card" draggable="true" data-task-id="${t.id}" aria-label="${escapeHTML(t.title)}; drag to a column or open task to change status"><button class="card-open" data-open="${t.id}" aria-label="Open ${escapeHTML(t.title)}"><div class="pokemon-line"><img src="${sprite(p.spriteId || p.id)}" alt="${p.name}" loading="lazy" width="49" height="49" draggable="false"><div><strong>${p.name}</strong><small>${evolutionStage(t.status)===0?'Base':t.status==='done'?'Final form':'In progress'}</small></div></div><span class="type-badge">${p.type}</span><h3>${escapeHTML(t.title)}</h3><p class="next-step"><strong>Next step</strong><br>${escapeHTML(t.status === "done" ? "Done." : next?.text || "Add a next step.")}</p><div class="card-meta"><span class="priority ${t.priority.toLowerCase()}">${t.priority}</span><span class="priority">◷ ${t.minutes} min</span></div><div class="task-progress" aria-label="${percent}% checklist complete"><span style="width:${percent}%"></span></div></button><div class="card-footer"><span>Due ${escapeHTML(dateLabel(t.due))} · ${done}/${t.steps.length}</span>${t.status !== "done" ? `<button class="move-task" data-next="${t.id}">Next →</button>` : "<span>✓ Done</span>"}</div></article>`;
 }
 function showDialog(html) {
   $("#dialog-content").innerHTML = html;
@@ -311,7 +293,7 @@ function showDialog(html) {
 }
 function openCreate(status = "encounter") {
   showDialog(
-    `<h2 class="form-title">New task</h2><form id="task-form" class="task-form"><label class="field full">Title<input name="title" required maxlength="120" placeholder="Task name"></label><label class="field full">Description<textarea name="description" maxlength="2000" placeholder="Optional details"></textarea></label><label class="field full">Steps · one per line<textarea name="steps" required maxlength="2000" placeholder="Open the test harness&#10;Reproduce one scenario"></textarea></label><label class="field">Companion<select name="companion">${pokemon.map((p) => `<option value="${p.id}" ${p.id === starters[trainer] ? "selected" : ""}>${p.name}</option>`).join("")}</select></label><label class="field">Visibility<select name="owner"><option value="${trainer}">Mine</option><option value="ours" ${scope === "ours" ? "selected" : ""}>Ours</option></select></label><label class="field">Assigned to<select name="assigneeId"><option value="">Unassigned</option><option value="ale">Ale</option><option value="sharlotte">Sharlotte</option></select></label><label class="field">Priority<select name="priority"><option>Low</option><option selected>Medium</option><option>High</option></select></label><label class="field">Due date<input type="date" name="due"></label><label class="field">Minutes<input name="minutes" type="number" required min="1" max="480" value="15"></label><label class="field">Status<select name="status">${columns.map((c) => `<option value="${c.id}" ${status === c.id ? "selected" : ""}>${c.name}</option>`).join("")}</select></label><div class="form-actions"><button type="button" class="secondary" id="cancel-create">Cancel</button><button class="primary" type="submit">Create task</button></div></form>`,
+    `<h2 class="form-title">New task</h2><form id="task-form" class="task-form"><label class="field full">Title<input name="title" required maxlength="120" placeholder="Task name"></label><label class="field full">Description<textarea name="description" maxlength="2000" placeholder="Optional details"></textarea></label><label class="field full">Steps · one per line<textarea name="steps" required maxlength="2000" placeholder="Open the test harness&#10;Reproduce one scenario"></textarea></label><label class="field">Visibility<select name="owner"><option value="${trainer}">Mine</option><option value="ours" ${scope === "ours" ? "selected" : ""}>Ours</option></select></label><label class="field">Assigned to<select name="assigneeId"><option value="">Unassigned</option><option value="ale">Ale</option><option value="sharlotte">Sharlotte</option></select></label><label class="field">Priority<select name="priority"><option>Low</option><option selected>Medium</option><option>High</option></select></label><label class="field">Due date<input type="date" name="due"></label><label class="field">Minutes<input name="minutes" type="number" required min="1" max="480" value="15"></label><label class="field">Status<select name="status">${columns.map((c) => `<option value="${c.id}" ${status === c.id ? "selected" : ""}>${c.name}</option>`).join("")}</select></label><div class="form-actions"><button type="button" class="secondary" id="cancel-create">Cancel</button><button class="primary" type="submit">Create task</button></div></form>`,
   );
   const ownerField = $("#task-form").elements.owner,
     assigneeField = $("#task-form").elements.assigneeId;
@@ -346,7 +328,6 @@ function openCreate(status = "encounter") {
       owner: String(f.get("owner")),
       assigneeId: f.get("assigneeId") || null,
       status: String(f.get("status")),
-      companion: Number(f.get("companion")),
       priority: String(f.get("priority")),
       due: String(f.get("due")),
       minutes: Number(f.get("minutes")),
@@ -368,7 +349,7 @@ function openDetails(id) {
   selectedId = id;
   const p = companionFor(t);
   showDialog(
-    `<div class="detail-hero"><img src="${sprite(p.id)}" alt="${p.name}" width="100" height="100"><div><span class="type-badge">${p.name.toUpperCase()} / ${p.type}</span><h2>${escapeHTML(t.title)}</h2></div></div><p class="detail-description">${escapeHTML(t.description || "No description.")}</p><dl class="detail-stats"><div><dt>PRIORITY</dt><dd>${t.priority}</dd></div><div><dt>DUE DATE</dt><dd>${escapeHTML(dateLabel(t.due))}</dd></div><div><dt>ESTIMATE</dt><dd>${t.minutes} minutes</dd></div></dl><h3 style="font-size:13px">Steps</h3><ul class="checklist">${t.steps.map((s, i) => `<li><label><input type="checkbox" data-step="${i}" ${s.done ? "checked" : ""}>${escapeHTML(s.text)}</label></li>`).join("")}</ul><div class="detail-actions form-actions"><label class="field">Move to<select id="detail-status">${columns.map((c) => `<option value="${c.id}" ${t.status === c.id ? "selected" : ""}>${c.name}</option>`).join("")}</select></label><button class="primary" id="detail-focus">◎ Focus</button></div>`,
+    `<div class="detail-hero"><img src="${sprite(p.spriteId || p.id)}" alt="${p.name}" width="100" height="100"><div><span class="type-badge">${p.name.toUpperCase()} / ${p.type}</span><h2>${escapeHTML(t.title)}</h2></div></div><p class="detail-description">${escapeHTML(t.description || "No description.")}</p><dl class="detail-stats"><div><dt>PRIORITY</dt><dd>${t.priority}</dd></div><div><dt>DUE DATE</dt><dd>${escapeHTML(dateLabel(t.due))}</dd></div><div><dt>ESTIMATE</dt><dd>${t.minutes} minutes</dd></div></dl><h3 style="font-size:13px">Steps</h3><ul class="checklist">${t.steps.map((s, i) => `<li><label><input type="checkbox" data-step="${i}" ${s.done ? "checked" : ""}>${escapeHTML(s.text)}</label></li>`).join("")}</ul><div class="detail-actions form-actions"><label class="field">Move to<select id="detail-status">${columns.map((c) => `<option value="${c.id}" ${t.status === c.id ? "selected" : ""}>${c.name}</option>`).join("")}</select></label><button class="primary" id="detail-focus">◎ Focus</button></div>`,
   );
   document.querySelectorAll("[data-step]").forEach(
     (input) =>
@@ -385,10 +366,6 @@ function openDetails(id) {
   };
 }
 function openFocus(id) {
-  if (scope === "yours") {
-    notify("Personal tasks are private.");
-    return;
-  }
   const candidates = visibleTasks().filter((t) => t.status !== "done");
   const t = id
     ? tasks.find((t) => t.id === id)
@@ -403,7 +380,7 @@ function openFocus(id) {
   const next = t.steps.find((s) => !s.done),
     p = companionFor(t);
   showDialog(
-    `<div style="text-align:center"><img src="${sprite(p.id)}" alt="${p.name}" width="96" height="96" style="image-rendering:pixelated"><p class="eyebrow">FOCUS</p><h2>${escapeHTML(t.title)}</h2></div><p class="focus-description">${t.minutes} min estimate</p><div class="focus-step focus-step-content"><p class="eyebrow" style="margin-top:20px">NEXT STEP</p><p class="focus-step">${escapeHTML(next?.text || "All steps done.")}</p></div><button class="primary focus-complete" id="complete-step">${next ? "✓ Done" : "✓ Finish task"}</button>`,
+    `<div style="text-align:center"><img src="${sprite(p.spriteId || p.id)}" alt="${p.name}" width="96" height="96" style="image-rendering:pixelated"><p class="eyebrow">FOCUS</p><h2>${escapeHTML(t.title)}</h2></div><p class="focus-description">${t.minutes} min estimate</p><div class="focus-step focus-step-content"><p class="eyebrow" style="margin-top:20px">NEXT STEP</p><p class="focus-step">${escapeHTML(next?.text || "All steps done.")}</p></div><button class="primary focus-complete" id="complete-step">${next ? "✓ Done" : "✓ Finish task"}</button>`,
   );
   $("#complete-step").onclick = async () => {
     if (t.status === "done") {
@@ -489,14 +466,6 @@ function openStarter() {
   };
 }
 
-$("#board").insertAdjacentHTML(
-  "afterend",
-  '<section class="private-view" id="private-view" hidden><div>⌑</div><h2>Personal tasks</h2><p>Private to each of you. Shared tasks are in Ours.</p><button class="secondary" id="go-shared">View Ours</button></section>',
-);
-$("#go-shared").onclick = () => {
-  scope = "ours";
-  render();
-};
 $("#choose-starter").onclick = openStarter;
 $("#new-task").onclick = () => openCreate();
 document.querySelectorAll("[data-scope]").forEach(
@@ -584,7 +553,7 @@ $("#refresh").onclick = async () => {
 function openPasswordChange() {
   showDialog(`<h2 class="form-title">Change password</h2>
     <form id="password-form" class="password-form">
-      <input type="text" name="username" autocomplete="username" value="${escapeHTML(currentUser.id)}" hidden>
+      <input type="text" name="username" autocomplete="username" value="${escapeHTML(currentUser.username)}" hidden>
       <label class="field">Current password<input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required maxlength="128"></label>
       <label class="field">New password<input id="new-password" name="newPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="128" aria-describedby="password-hint"></label>
       <label class="field">Confirm password<input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
@@ -623,10 +592,10 @@ $("#logout").onclick = async () => {
   }
 };
 showLogin();
-api("/me")
-  .then((result) => startSession(result.user))
-  .catch((error) => {
-    showLogin();
-    if (error.message !== "Please sign in.")
-      $("#login-error").textContent = error.message;
-  });
+async function initialize() {
+  const response=await fetch('/pokemon-catalog.json');
+  if(!response.ok)throw new Error('Cannot load Pokémon. Refresh to try again.');
+  const data=await response.json();pokemonById=new Map(data.species.map(p=>[p.id,p]));
+  const result=await api('/me');await startSession(result.user);
+}
+initialize().catch(error=>{showLogin();if(error.message!=='Please sign in.')$('#login-error').textContent=error.message;}).finally(()=>{$('#login-submit').disabled=!pokemonById.size;});

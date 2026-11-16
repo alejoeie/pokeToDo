@@ -138,7 +138,7 @@ const payload = (extra = {}) => ({
   visibility: "personal",
   assigneeId: null,
   status: "encounter",
-  companion: 25,
+  companion: 252,
   priority: "Medium",
   due: "2026-12-01",
   minutes: 15,
@@ -170,7 +170,7 @@ test("task validation rejects injection, bad dates, fields, and unbounded inputs
     { minutes: 1.2 },
     { steps: [] },
     { assigneeId: "third-user" },
-    { companion: 999 },
+    { companion: 99999 },
   ])
     assert.throws(() => validateTask(payload(bad)));
   assert.deepEqual(taskAccess("ale"), {
@@ -190,7 +190,7 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
         passwordHash: hash,
         starter: null,
       });
-  const handler = await createHandler({
+  const handler = await createHandler({chooseCompanion:()=>252,
     db,
     origin: "http://localhost:4174",
     now: () => time,
@@ -203,13 +203,13 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
   assert.equal((await call("/server/db.js")).status, 404);
   const badLogin = await call("/api/login", {
     method: "POST",
-    body: { login: "ale", password: "wrong" },
+    body: { login: "alejoeie", password: "wrong" },
   });
   assert.equal(badLogin.status, 401);
   const login = async (login) => {
     const result = await call("/api/login", {
       method: "POST",
-      body: { login, password: "a sufficiently long test password" },
+      body: { login:login==='ale'?'alejoeie':'shar', password: "a sufficiently long test password" },
     });
     assert.equal(result.status, 200);
     assert.equal(result.body.user.passwordHash, undefined);
@@ -217,12 +217,15 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
   };
   const ale = await login("ale"),
     sharlotte = await login("sharlotte");
+  for(const oldLogin of ['ale','sharlotte'])assert.equal((await call('/api/login',{method:'POST',body:{login:oldLogin,password:'a sufficiently long test password'}})).status,401);
   const personal = await call("/api/tasks", {
     method: "POST",
     cookie: ale,
-    body: payload(),
+    body: payload({companion:6}),
   });
   assert.equal(personal.status, 201);
+  assert.equal(personal.body.task.companion,252);
+  const catalogResponse=await call('/pokemon-catalog.json');assert.equal(catalogResponse.status,200);assert(catalogResponse.body.species.length>=1000);
   const id = personal.body.task.id;
   assert.equal(personal.body.task.ownerId, "ale");
   assert.equal(
@@ -358,13 +361,13 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
   for (let i = 0; i < 10; i++)
     await call("/api/login", {
       method: "POST",
-      body: { login: "sharlotte", password: "wrong" },
+      body: { login: "shar", password: "wrong" },
     });
   assert.equal(
     (
       await call("/api/login", {
         method: "POST",
-        body: { login: "sharlotte", password: "wrong" },
+        body: { login: "shar", password: "wrong" },
       })
     ).status,
     429,
@@ -377,7 +380,7 @@ test('frontend: authenticated session, create task, refresh, focus save, and sig
   const { randomUUID } = await import('node:crypto');
   const db = memoryDB();
   await db.collection('users').insertOne({ _id:'sharlotte', name:'Sharlotte', passwordHash:await hashPassword('a sufficiently long test password'), starter:252 });
-  const handler = await createHandler({db,origin:'http://localhost:4174'});
+  const handler = await createHandler({chooseCompanion:()=>252,db,origin:'http://localhost:4174'});
   const nodes = new Map(), classes = new Set();
   const dragCards=[], dropColumns=[]; let reducedMotion=true;
   function node(selector) {
@@ -396,6 +399,7 @@ test('frontend: authenticated session, create task, refresh, focus save, and sig
   const context=createContext({
     document:{querySelector:node,querySelectorAll:selector=>selector==='[data-task-id]'?dragCards:selector==='.column[data-status]'?dropColumns:[],addEventListener(){},body:{classList:{add:v=>classes.add(v),remove:v=>classes.delete(v)}}},
     fetch:async(url, options={})=>{
+      if(url==='/pokemon-catalog.json')return {ok:true,json:async()=>JSON.parse(await readFile(new URL('../data/pokemon.json',import.meta.url),'utf8'))};
       const result=await request(handler,url,{method:options.method,body:options.body?JSON.parse(options.body):undefined,cookie});
       if(result.headers['set-cookie'])cookie=result.headers['set-cookie'].split(';')[0];
       return {status:result.status,ok:result.status>=200&&result.status<300,json:async()=>JSON.parse(JSON.stringify(result.body))};
@@ -404,8 +408,8 @@ test('frontend: authenticated session, create task, refresh, focus save, and sig
     FormData:class{constructor(target){this.fields=target.fields;}get(key){return this.fields[key]??'';}},
   });
   runInContext(await readFile(new URL('../app.js',import.meta.url),'utf8'),context);
-  await new Promise(resolve=>setImmediate(resolve));assert(classes.has('signed-out'));
-  node('#login-name').value='sharlotte';node('#password').value='a sufficiently long test password';
+  await runInContext('initialize().catch(()=>{})',context);assert(classes.has('signed-out'));
+  node('#login-name').value='shar';node('#password').value='a sufficiently long test password';
   await node('#login-form').onsubmit({preventDefault(){}});
   assert(!classes.has('signed-out'));assert.equal(node('#account-name').textContent,'Sharlotte');assert.equal(node('#password').value,'');
   runInContext('openCreate()',context);
@@ -491,8 +495,8 @@ test('password change: validates current password, revokes own sessions, preserv
   const db=memoryDB(), oldPassword='a sufficiently long test password', newPassword='a different and long test password';
   const hash=await hashPassword(oldPassword);
   for(const id of ['ale','sharlotte'])await db.collection('users').insertOne({_id:id,name:id,passwordHash:hash,starter:252});
-  const handler=await createHandler({db,origin:'http://localhost:4174'});
-  const login=async(id,password=oldPassword)=>request(handler,'/api/login',{method:'POST',body:{login:id,password}});
+  const handler=await createHandler({chooseCompanion:()=>252,db,origin:'http://localhost:4174'});
+  const login=async(id,password=oldPassword)=>request(handler,'/api/login',{method:'POST',body:{login:id==='ale'?'alejoeie':'shar',password}});
   const first=await login('ale'), second=await login('ale'), partner=await login('sharlotte');
   const cookie=r=>r.headers['set-cookie'].split(';')[0];
   const change=(body,auth=cookie(first),origin='http://localhost:4174')=>request(handler,'/api/password',{method:'POST',cookie:auth,origin,body});

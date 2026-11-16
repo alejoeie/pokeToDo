@@ -1,8 +1,10 @@
+import { randomCompanion } from "./pokemon.js";
 import { validateOrigin } from "./config.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
   ACCOUNTS,
+  LOGIN_IDS,
   STARTERS,
   HttpError,
   taskAccess,
@@ -22,6 +24,7 @@ import {
 const root = new URL("../", import.meta.url);
 const assets = {
   "/": ["index.html", "text/html; charset=utf-8"],
+  "/pokemon-catalog.json": ["data/pokemon.json", "application/json; charset=utf-8"],
   "/app.js": ["app.js", "text/javascript; charset=utf-8"],
   "/styles.css": ["styles.css", "text/css; charset=utf-8"],
 };
@@ -53,6 +56,7 @@ export async function createHandler({
   origin,
   production = false,
   now = () => new Date(),
+  chooseCompanion = randomCompanion,
 }) {
   validateOrigin(origin,production);
   const dummyHash = await hashPassword(newToken());
@@ -102,6 +106,7 @@ export async function createHandler({
       if (!path.startsWith("/api/")) {
         if (!["GET", "HEAD"].includes(req.method) || !assets[path])
           throw new HttpError(404, "Not found.");
+        if(path === "/pokemon-catalog.json") res.setHeader("Cache-Control", "public, max-age=3600");
         const [file, type] = assets[path];
         const data = await readFile(new URL(file, root));
         res.writeHead(200, { "Content-Type": type });
@@ -131,13 +136,13 @@ export async function createHandler({
             ? input.login.toLowerCase().trim()
             : "";
         if (
-          !ACCOUNTS.includes(login) ||
+          !Object.hasOwn(LOGIN_IDS, login) ||
           typeof input.password !== "string" ||
           input.password.length > 128
         )
           throw new HttpError(401, "Incorrect login or password.");
-        await rateLimit(`user:${login}`, 10);
-        const account = await db.collection("users").findOne({ _id: login });
+        await rateLimit(`user:${LOGIN_IDS[login]}`, 10);
+        const account = await db.collection("users").findOne({ _id: LOGIN_IDS[login] });
         const correct = await verifyPassword(
           input.password,
           account?.passwordHash || dummyHash,
@@ -246,7 +251,8 @@ export async function createHandler({
         return;
       }
       if (path === "/api/tasks" && req.method === "POST") {
-        const task = validateTask(await body(req));
+        const input = await body(req);
+        const task = validateTask({ ...input, companion: chooseCompanion() });
         if (
           task.visibility === "personal" &&
           task.assigneeId !== null &&
@@ -285,6 +291,7 @@ export async function createHandler({
         }
         const input = await body(req),
           task = validateTask(input);
+        if(task.companion !== existing.companion)throw new HttpError(400, 'A task keeps its assigned companion.');
         if (!Number.isInteger(input.version) || input.version < 1)
           throw new HttpError(400, "Task version required.");
         if (

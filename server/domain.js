@@ -1,6 +1,8 @@
+import { allowedCompanions } from "./pokemon.js";
+export const LOGIN_IDS = Object.freeze({ alejoeie: "ale", shar: "sharlotte" });
 export const ACCOUNTS = ["ale", "sharlotte"];
 export const STARTERS = [1, 4, 252];
-export const POKEMON = [1, 4, 7, 25, 39, 133, 252];
+export const POKEMON = allowedCompanions;
 export const STATUSES = ["encounter", "ready", "progress", "done"];
 export class HttpError extends Error {
   constructor(status, message) {
@@ -113,5 +115,5 @@ export function taskDTO(task) {
   };
 }
 export function userDTO(user) {
-  return { id: user._id, name: user.name, starter: user.starter };
+  return { id: user._id, username: user._id === "ale" ? "alejoeie" : "shar", name: user.name, starter: user.starter };
 }

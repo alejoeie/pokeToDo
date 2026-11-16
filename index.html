@@ -13,15 +13,7 @@
         <span class="pokeball" aria-hidden="true"></span>
         <h1 id="login-title">Welcome to PokéDo</h1>
         <form id="login-form">
-          <label class="field"
-            >Trainer<select
-              id="login-name"
-              name="username"
-              autocomplete="username"
-            >
-              <option value="ale">Ale</option>
-              <option value="sharlotte">Sharlotte</option>
-            </select></label
+          <label class="field">Username<input id="login-name" name="username" type="text" autocomplete="username" required maxlength="64" autocapitalize="none" spellcheck="false" /></label
           ><label class="field"
             >Password<input
               id="password"
@@ -32,13 +24,12 @@
               maxlength="128"
           /></label>
           <p id="login-error" role="alert"></p>
-          <button type="submit" class="primary" id="login-submit">
+          <button type="submit" class="primary" id="login-submit" disabled>
             Sign in
           </button>
         </form>
       </div>
     </section>
-    <a class="skip" href="#main">Skip to board</a>
     <aside class="sidebar">
       <a href="./" class="brand"
         ><span class="pokeball"></span>poké<span>do</span><sup>✦</sup></a
@@ -49,7 +40,7 @@
       ><button class="nav-item" id="focus-nav"><span>◎</span> Focus</button>
       <div class="trainer-card">
         <div class="avatar">A</div>
-        <div><strong id="sidebar-name">Trainer Ale</strong></div>
+        <div><strong id="sidebar-name"></strong></div>
       </div>
     </aside>
     <div class="shell">
@@ -93,7 +84,6 @@
         <div class="board-toolbar">
           <div class="tabs" role="group" aria-label="Task visibility">
             <button data-scope="mine" aria-pressed="true">Mine</button
-            ><button data-scope="yours" aria-pressed="false">Yours</button
             ><button data-scope="ours" aria-pressed="false">Ours</button>
           </div>
           <label class="search"

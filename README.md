@@ -29,7 +29,7 @@ npm start
 
 Setup creates validators and indexes, then asks for Ale's and Sharlotte's passwords **without echoing them**. Use distinct passwords of 12–128 characters. There is no registration endpoint. Existing accounts are preserved when setup is rerun.
 
-Open **http://localhost:4174**. Choose Ale or Sharlotte and enter that account's password. Accounts start with an empty board; old browser demo tasks are not imported. Their old localStorage entries are no longer read.
+Open **http://localhost:4174**. Enter username `alejoeie` (Ale) or `shar` (Sharlotte) and that account's password. Accounts start with an empty board; old browser demo tasks are not imported. Their old localStorage entries are no longer read.
 
 If a previous Python preview is still using port 4174, stop it with Ctrl+C before starting Node.
 
@@ -56,7 +56,7 @@ This prompts for a new password and revokes that account's sessions. No password
 - Only the creator may change a task's visibility.
 - Personal assignments must be unassigned or the creator; shared assignments may be either account.
 - Ownership comes from the session. Client-supplied ownership is rejected.
-- The Yours tab explains the boundary; it does not download the other person's private tasks.
+- The board has Mine and Ours tabs; the other person's private tasks are never downloaded.
 
 Use **Refresh** to load changes made on another device. There is no realtime subscription yet. Edits include task versions; if another client changed the task, the API rejects the stale edit and the board reloads instead of silently overwriting it. A failed save does not fall back to localStorage.
 
@@ -109,7 +109,7 @@ Seven curated companions use the public [PokéAPI sprites repository](https://gi
 
 Drag a card into any column with a mouse. The existing Next button and task status selector remain available for keyboard and touch. Moves use the same authenticated, version-checked API; failed moves reload saved data.
 
-Tasks keep their base companion ID in Atlas. Displayed forms follow saved status: To do / Ready = base; In progress = middle; Done = final. Charmander, Bulbasaur, Treecko, and Squirtle have three-stage families. Pikachu, Jigglypuff, and Eevee stay in base form until Done (Raichu, Wigglytuff, and Vaporeon respectively). Moving backward plays a single hit/recoil animation, then restores the earlier form. Ready → To do keeps the base form and shows only the hit reaction. No database migration is needed.
+Tasks keep their assigned base species ID in Atlas. To do / Ready show the base form; In progress shows an intermediate form when available; Done shows the final form. Single-stage Pokémon stay in their original form. Two-stage Pokémon evolve at completion. Branching families use a deterministic first branch so they never change between devices. Moving backward restores the earlier form with a hit reaction. New encounters are assigned by the server from the base-species pool; clients cannot choose or swap the companion. Existing companions remain valid.
 
 Successful form changes and backward moves show a dismissible sprite animation. It never runs for failed saves or ordinary reloads. Reduced-motion preferences replace it with a brief text notification.
 
@@ -118,3 +118,11 @@ Successful form changes and backward moves show a dismissible sprite animation. 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for GitHub Actions, Render, Atlas network access, and the separate `pokedo.alebyte.me` subdomain. `npm start` loads a local `.env` if present and also supports hosting environment variables without an `.env` file.
 
 Startup logs report missing URI, invalid origin, authentication, and network-access problems without printing MongoDB errors or secrets. On Render, the message that `.env` is absent is expected: configure the service Environment variables instead.
+
+## Catalog and login identifiers
+
+The fixed login identifiers are `alejoeie` and `shar`. Internal account IDs remain `ale` and `sharlotte`, preserving passwords, sessions, task ownership, and CLI reset commands. Names are shown only in the authenticated workspace.
+
+`data/pokemon.json` caches 1,025 species and 541 unevolved species from PokéAPI's CSV dataset. `server/pokemon.js` selects uniformly from base species using Node's crypto randomInt. The server provides cached metadata at `/pokemon-catalog.json`; it does not call PokéAPI during task creation. Legacy task species remain valid even if later games introduced pre-evolutions. The user-selected starter remains the profile companion and does not affect random task assignment.
+
+When deploying catalog changes, run schema initialization against Atlas first to expand the allowed companion IDs. This changes validators/indexes only and does not reset accounts or modify tasks.
