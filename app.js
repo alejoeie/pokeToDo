@@ -8,74 +8,116 @@ const pokemon = [
   { id: 133, name: "Eevee", type: "NORMAL" },
 ];
 // Shared cached metadata; no per-task API calls to PokéAPI.
-let pokemonById=new Map();
-const evolutionStage = status => status === 'done' ? 2 : status === 'progress' ? 1 : 0;
+let pokemonById = new Map();
+const evolutionStage = (status) =>
+  status === "done" ? 2 : status === "progress" ? 1 : 0;
 function evolvedCompanion(task) {
-  const base=pokemonById.get(task.companion);
-  return pokemonById.get(base?.stages[evolutionStage(task.status)]) || base || pokemon[0];
+  const base = pokemonById.get(task.companion);
+  return (
+    pokemonById.get(base?.stages[evolutionStage(task.status)]) ||
+    base ||
+    pokemon[0]
+  );
 }
 function evolutionTransition(previous, next) {
-  const from=columns.findIndex(c=>c.id===previous.status), to=columns.findIndex(c=>c.id===next.status);
-  if(from===to)return null;
-  const before=evolvedCompanion(previous), after=evolvedCompanion(next);
-  if(to<from)return {before,after,direction:'backward'};
-  return before.id!==after.id?{before,after,direction:'forward'}:null;
+  const from = columns.findIndex((c) => c.id === previous.status),
+    to = columns.findIndex((c) => c.id === next.status);
+  if (from === to) return null;
+  const before = evolvedCompanion(previous),
+    after = evolvedCompanion(next);
+  if (to < from) return { before, after, direction: "backward" };
+  return before.id !== after.id
+    ? { before, after, direction: "forward" }
+    : null;
 }
-let draggedTaskId=null, evolutionQueue=[], evolutionTimer=null;
+let draggedTaskId = null,
+  evolutionQueue = [],
+  evolutionTimer = null;
 function clearDrag() {
-  draggedTaskId=null;
-  document.querySelectorAll('.drop-target, .is-dragging').forEach(node=>node.classList.remove('drop-target','is-dragging'));
+  draggedTaskId = null;
+  document
+    .querySelectorAll(".drop-target, .is-dragging")
+    .forEach((node) => node.classList.remove("drop-target", "is-dragging"));
 }
 async function changeTaskStatus(id, status) {
-  const task=tasks.find(t=>t.id===id);
-  if(saving || !accessible(task) || !columns.some(c=>c.id===status) || task.status===status)return false;
-  task.status=status;
-  if(!await save())return false;
-  if(status==='done')notify('Task complete!');
+  const task = tasks.find((t) => t.id === id);
+  if (
+    saving ||
+    !accessible(task) ||
+    !columns.some((c) => c.id === status) ||
+    task.status === status
+  )
+    return false;
+  task.status = status;
+  if (!(await save())) return false;
+  if (status === "done") notify("Task complete!");
   return true;
 }
 function bindDragAndDrop() {
-  document.querySelectorAll('[data-task-id]').forEach(card=>{
-    card.ondragstart=event=>{
-      const task=tasks.find(t=>t.id===card.dataset.taskId);
-      if(saving || !accessible(task) || !event.dataTransfer){event.preventDefault();return;}
-      draggedTaskId=task.id;event.dataTransfer.effectAllowed='move';
-      event.dataTransfer.setData('application/x-pokedo-task',task.id);
-      card.classList.add('is-dragging');
+  document.querySelectorAll("[data-task-id]").forEach((card) => {
+    card.ondragstart = (event) => {
+      const task = tasks.find((t) => t.id === card.dataset.taskId);
+      if (saving || !accessible(task) || !event.dataTransfer) {
+        event.preventDefault();
+        return;
+      }
+      draggedTaskId = task.id;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-pokedo-task", task.id);
+      card.classList.add("is-dragging");
     };
-    card.ondragend=clearDrag;
+    card.ondragend = clearDrag;
   });
-  document.querySelectorAll('.column[data-status]').forEach(column=>{
-    column.ondragover=event=>{
-      if(!draggedTaskId || saving)return;
-      event.preventDefault();event.dataTransfer.dropEffect='move';column.classList.add('drop-target');
-    };
-    column.ondragleave=event=>{if(!column.contains(event.relatedTarget))column.classList.remove('drop-target');};
-    column.ondrop=async event=>{
+  document.querySelectorAll(".column[data-status]").forEach((column) => {
+    column.ondragover = (event) => {
+      if (!draggedTaskId || saving) return;
       event.preventDefault();
-      const id=draggedTaskId, received=event.dataTransfer?.getData('application/x-pokedo-task');
+      event.dataTransfer.dropEffect = "move";
+      column.classList.add("drop-target");
+    };
+    column.ondragleave = (event) => {
+      if (!column.contains(event.relatedTarget))
+        column.classList.remove("drop-target");
+    };
+    column.ondrop = async (event) => {
+      event.preventDefault();
+      const id = draggedTaskId,
+        received = event.dataTransfer?.getData("application/x-pokedo-task");
       clearDrag();
-      if(!id || received!==id)return;
-      await changeTaskStatus(id,column.dataset.status);
+      if (!id || received !== id) return;
+      await changeTaskStatus(id, column.dataset.status);
     };
   });
 }
-function playEvolution(before, after, owner, direction='forward') {
-  if(!currentUser || currentUser.id!==owner)return;
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches){notify(before.id===after.id?`${after.name} · Ready again`:`${before.name} → ${after.name}`);return;}
-  evolutionQueue.push({before,after,owner,direction});
-  if(!$('#evolution-dialog').open)showNextEvolution();
+function playEvolution(before, after, owner, direction = "forward") {
+  if (!currentUser || currentUser.id !== owner) return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    notify(
+      before.id === after.id
+        ? `${after.name} · Ready again`
+        : `${before.name} → ${after.name}`,
+    );
+    return;
+  }
+  evolutionQueue.push({ before, after, owner, direction });
+  if (!$("#evolution-dialog").open) showNextEvolution();
 }
 function showNextEvolution() {
-  const next=evolutionQueue.shift();
-  if(!next || !currentUser || currentUser.id!==next.owner)return;
-  const {before,after,direction}=next;
-  const backward=direction==='backward';
-  $('#evolution-content').innerHTML=`<p class="eyebrow">${backward?'TRY AGAIN':'EVOLUTION'}</p><h2 id="evolution-title">${before.id===after.id?after.name:`${before.name} → ${after.name}`}</h2><div class="evolution-stage ${backward?'is-devolving':''}" aria-hidden="true">${backward?'<span class="hit-mark">✹</span>':''}<div class="evolution-ring ring-one"></div><div class="evolution-ring ring-two"></div><span class="evolution-star star-one">✦</span><span class="evolution-star star-two">✧</span><span class="evolution-star star-three">✦</span><img class="evolution-before" src="${sprite(before.spriteId || before.id)}" alt="" width="192" height="192" draggable="false"><img class="evolution-after" src="${sprite(after.spriteId || after.id)}" alt="" width="192" height="192" draggable="false"></div><p id="evolution-message" role="status">${backward?`${before.name} took a hit!`:`${before.name} is evolving…`}</p><button type="button" class="primary" id="close-evolution">Continue</button>`;
-  $('#evolution-dialog').showModal();
-  $('#close-evolution').onclick=()=>$('#evolution-dialog').close();
+  const next = evolutionQueue.shift();
+  if (!next || !currentUser || currentUser.id !== next.owner) return;
+  const { before, after, direction } = next;
+  const backward = direction === "backward";
+  $("#evolution-content").innerHTML =
+    `<p class="eyebrow">${backward ? "TRY AGAIN" : "EVOLUTION"}</p><h2 id="evolution-title">${before.id === after.id ? after.name : `${before.name} → ${after.name}`}</h2><div class="evolution-stage ${backward ? "is-devolving" : ""}" aria-hidden="true">${backward ? '<span class="hit-mark">✹</span>' : ""}<div class="evolution-ring ring-one"></div><div class="evolution-ring ring-two"></div><span class="evolution-star star-one">✦</span><span class="evolution-star star-two">✧</span><span class="evolution-star star-three">✦</span><img class="evolution-before" src="${sprite(before.spriteId || before.id)}" alt="" width="192" height="192" draggable="false"><img class="evolution-after" src="${sprite(after.spriteId || after.id)}" alt="" width="192" height="192" draggable="false"></div><p id="evolution-message" role="status">${backward ? `${before.name} took a hit!` : `${before.name} is evolving…`}</p><button type="button" class="primary" id="close-evolution">Continue</button>`;
+  $("#evolution-dialog").showModal();
+  $("#close-evolution").onclick = () => $("#evolution-dialog").close();
   clearTimeout(evolutionTimer);
-  evolutionTimer=setTimeout(()=>{if($('#evolution-dialog').open && $('#evolution-message'))$('#evolution-message').textContent=backward?`${after.name} is ready again.`:`Hello, ${after.name}!`;},1700);
+  evolutionTimer = setTimeout(() => {
+    if ($("#evolution-dialog").open && $("#evolution-message"))
+      $("#evolution-message").textContent = backward
+        ? `${after.name} is ready again.`
+        : `Hello, ${after.name}!`;
+  }, 1700);
 }
 const columns = [
   { id: "encounter", name: "To do", hint: "No tasks yet." },
@@ -83,7 +125,7 @@ const columns = [
   { id: "progress", name: "In progress", hint: "Nothing in progress." },
   { id: "done", name: "Done", hint: "No completed tasks." },
 ];
-const starterIds = [4, 1, 252];
+const starterIds = [4, 1, 7, 252];
 let starters = {},
   tasks = [],
   persisted = new Map(),
@@ -144,7 +186,7 @@ const taskPayload = (t) => ({
   visibility: t.owner === "ours" ? "shared" : "personal",
   assigneeId: t.assigneeId ?? null,
   status: t.status,
-  ...(t.companion ? {companion:t.companion}:{}),
+  ...(t.companion ? { companion: t.companion } : {}),
   priority: t.priority,
   due: t.due,
   minutes: t.minutes,
@@ -170,8 +212,8 @@ async function save() {
   for (const selector of ["main", "#task-dialog", ".sidebar", ".topbar"])
     document.querySelector(selector).inert = true;
   let failed = false;
-  const evolutions=[];
-  const savingUser=currentUser?.id;
+  const evolutions = [];
+  const savingUser = currentUser?.id;
   try {
     for (const t of tasks) {
       const payload = taskPayload(t);
@@ -182,9 +224,13 @@ async function save() {
           exists ? "PATCH" : "POST",
           payload,
         );
-      const previous=persisted.has(t.id)?JSON.parse(persisted.get(t.id)):null;
-      const transition=previous?evolutionTransition(previous,result.task):null;
-      if(transition)evolutions.push(transition);
+      const previous = persisted.has(t.id)
+        ? JSON.parse(persisted.get(t.id))
+        : null;
+      const transition = previous
+        ? evolutionTransition(previous, result.task)
+        : null;
+      if (transition) evolutions.push(transition);
       const oldId = t.id;
       Object.assign(t, result.task);
       if (selectedId === oldId) selectedId = t.id;
@@ -193,7 +239,11 @@ async function save() {
     persisted = new Map(
       tasks.map((t) => [t.id, JSON.stringify(taskPayload(t))]),
     );
-    if(evolutions.length)setTimeout(()=>{for(const {before,after,direction} of evolutions)playEvolution(before,after,savingUser,direction);},0);
+    if (evolutions.length)
+      setTimeout(() => {
+        for (const { before, after, direction } of evolutions)
+          playEvolution(before, after, savingUser, direction);
+      }, 0);
     return true;
   } catch (error) {
     failed = true;
@@ -215,8 +265,12 @@ async function save() {
   }
 }
 function showLogin() {
-  evolutionQueue=[];clearTimeout(evolutionTimer);clearDrag();
-  if($('#evolution-dialog').open)$('#evolution-dialog').close();
+  applyStarterTheme(1);
+  setFocusMode(false);
+  evolutionQueue = [];
+  clearTimeout(evolutionTimer);
+  clearDrag();
+  if ($("#evolution-dialog").open) $("#evolution-dialog").close();
   currentUser = null;
   trainer = "";
   tasks = [];
@@ -253,14 +307,28 @@ function accessible(t) {
 }
 function render() {
   renderStarter();
+  document.body.dataset.scope = scope;
+  const scopeTasks = tasks.filter(
+    (t) => t.owner === (scope === "ours" ? "ours" : trainer),
+  );
+  const doneCount = scopeTasks.filter((t) => t.status === "done").length;
+  const percentage = scopeTasks.length
+    ? Math.round((doneCount / scopeTasks.length) * 100)
+    : 0;
+  $("#buddy-progress-label").textContent =
+    `${doneCount} of ${scopeTasks.length} tasks done`;
+  $("#buddy-progress-bar").setAttribute("aria-valuenow", String(percentage));
+  $("#buddy-progress-fill").style.width = `${percentage}%`;
   const visible = visibleTasks();
   document
     .querySelectorAll("[data-scope]")
     .forEach((b) => b.setAttribute("aria-pressed", b.dataset.scope === scope));
   $("#sidebar-name").textContent = currentUser.name;
   $(".avatar").textContent = currentUser.name[0];
-  $('#scope-caption').textContent=scope==='ours'?'Shared tasks':'Personal tasks';
-  $('#progress-summary').textContent=`${visible.filter(t=>t.status==='done').length} / ${visible.length} done`;
+  $("#scope-caption").textContent =
+    scope === "ours" ? "Shared tasks" : "Personal tasks";
+  $("#progress-summary").textContent =
+    `${visible.filter((t) => t.status === "done").length} / ${visible.length} done`;
   $("#board").innerHTML = columns
     .map((c) => {
       const items = visible.filter((t) => t.status === c.id);
@@ -273,11 +341,19 @@ function render() {
   document
     .querySelectorAll("[data-open]")
     .forEach((b) => (b.onclick = () => openDetails(b.dataset.open)));
-  document.querySelectorAll('[data-next]').forEach(button=>button.onclick=()=>{
-    const task=tasks.find(t=>t.id===button.dataset.next);
-    if(!task)return;
-    return changeTaskStatus(task.id,columns[Math.min(3,columns.findIndex(c=>c.id===task.status)+1)].id);
-  });
+  document.querySelectorAll("[data-next]").forEach(
+    (button) =>
+      (button.onclick = () => {
+        const task = tasks.find((t) => t.id === button.dataset.next);
+        if (!task) return;
+        return changeTaskStatus(
+          task.id,
+          columns[
+            Math.min(3, columns.findIndex((c) => c.id === task.status) + 1)
+          ].id,
+        );
+      }),
+  );
   bindDragAndDrop();
 }
 function card(t) {
@@ -285,9 +361,11 @@ function card(t) {
     done = t.steps.filter((s) => s.done).length,
     percent = t.steps.length ? Math.round((done / t.steps.length) * 100) : 0;
   const next = t.steps.find((s) => !s.done);
-  return `<article class="quest-card" draggable="true" data-task-id="${t.id}" aria-label="${escapeHTML(t.title)}; drag to a column or open task to change status"><button class="card-open" data-open="${t.id}" aria-label="Open ${escapeHTML(t.title)}"><div class="pokemon-line"><img src="${sprite(p.spriteId || p.id)}" alt="${p.name}" loading="lazy" width="49" height="49" draggable="false"><div><strong>${p.name}</strong><small>${evolutionStage(t.status)===0?'Base':t.status==='done'?'Final form':'In progress'}</small></div></div><span class="type-badge">${p.type}</span><h3>${escapeHTML(t.title)}</h3><p class="next-step"><strong>Next step</strong><br>${escapeHTML(t.status === "done" ? "Done." : next?.text || "Add a next step.")}</p><div class="card-meta"><span class="priority ${t.priority.toLowerCase()}">${t.priority}</span><span class="priority">◷ ${t.minutes} min</span></div><div class="task-progress" aria-label="${percent}% checklist complete"><span style="width:${percent}%"></span></div></button><div class="card-footer"><span>Due ${escapeHTML(dateLabel(t.due))} · ${done}/${t.steps.length}</span>${t.status !== "done" ? `<button class="move-task" data-next="${t.id}">Next →</button>` : "<span>✓ Done</span>"}</div></article>`;
+  return `<article class="quest-card" draggable="true" data-task-id="${t.id}" aria-label="${escapeHTML(t.title)}; drag to a column or open task to change status"><button class="card-open" data-open="${t.id}" aria-label="Open ${escapeHTML(t.title)}"><div class="pokemon-line"><img src="${sprite(p.spriteId || p.id)}" alt="${p.name}" loading="lazy" width="49" height="49" draggable="false"><div><strong>${p.name}</strong><small>${evolutionStage(t.status) === 0 ? "Base" : t.status === "done" ? "Final form" : "In progress"}</small></div></div><span class="type-badge">${p.type}</span><h3>${escapeHTML(t.title)}</h3><p class="next-step"><strong>Next step</strong><br>${escapeHTML(t.status === "done" ? "Done." : next?.text || "Add a next step.")}</p><div class="card-meta"><span class="priority ${t.priority.toLowerCase()}">${t.priority}</span><span class="priority">◷ ${t.minutes} min</span></div><div class="task-progress" aria-label="${percent}% checklist complete"><span style="width:${percent}%"></span></div></button><div class="card-footer"><span class="${t.due ? "due-date" : ""}">Due ${escapeHTML(dateLabel(t.due))} · ${done}/${t.steps.length}</span>${t.status !== "done" ? `<button class="move-task" data-next="${t.id}">Next →</button>` : "<span>✓ Done</span>"}</div></article>`;
 }
-function showDialog(html) {
+function showDialog(html, view = "default") {
+  $("#task-dialog").dataset.view = view;
+  setFocusMode(view === "focus");
   $("#dialog-content").innerHTML = html;
   $("#task-dialog").showModal();
 }
@@ -359,7 +437,9 @@ function openDetails(id) {
         render();
       }),
   );
-  $('#detail-status').onchange=async event=>{await changeTaskStatus(t.id,event.target.value);};
+  $("#detail-status").onchange = async (event) => {
+    await changeTaskStatus(t.id, event.target.value);
+  };
   $("#detail-focus").onclick = () => {
     $("#task-dialog").close();
     openFocus(selectedId);
@@ -381,6 +461,7 @@ function openFocus(id) {
     p = companionFor(t);
   showDialog(
     `<div style="text-align:center"><img src="${sprite(p.spriteId || p.id)}" alt="${p.name}" width="96" height="96" style="image-rendering:pixelated"><p class="eyebrow">FOCUS</p><h2>${escapeHTML(t.title)}</h2></div><p class="focus-description">${t.minutes} min estimate</p><div class="focus-step focus-step-content"><p class="eyebrow" style="margin-top:20px">NEXT STEP</p><p class="focus-step">${escapeHTML(next?.text || "All steps done.")}</p></div><button class="primary focus-complete" id="complete-step">${next ? "✓ Done" : "✓ Finish task"}</button>`,
+    "focus",
   );
   $("#complete-step").onclick = async () => {
     if (t.status === "done") {
@@ -405,7 +486,22 @@ function openFocus(id) {
   };
 }
 
+function applyStarterTheme(id) {
+  document.body.dataset.starter = String(starterIds.includes(id) ? id : 1);
+}
+function setFocusMode(active) {
+  document.body.dataset.focus = String(active);
+  $("#focus-nav").setAttribute("aria-pressed", String(active));
+  if (active) {
+    $("#focus-nav").classList.add("active");
+    $("#board-nav").classList.remove("active");
+  } else {
+    $("#focus-nav").classList.remove("active");
+    $("#board-nav").classList.add("active");
+  }
+}
 function renderStarter() {
+  applyStarterTheme(starters[trainer] || 1);
   const chosen = pokemon.find((p) => p.id === starters[trainer]);
   const image = document.querySelector(".welcome-art img");
   image.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${chosen?.id || 1}.png`;
@@ -434,6 +530,7 @@ function openStarter() {
     (button) =>
       (button.onclick = () => {
         selection = Number(button.dataset.starter);
+        applyStarterTheme(selection);
         document
           .querySelectorAll("[data-starter]")
           .forEach((b) =>
@@ -488,6 +585,12 @@ $("#board-nav").onclick = () => {
       : "smooth",
   });
 };
+$("#task-dialog").addEventListener("close", () => {
+  if (!$("#task-dialog").open) {
+    setFocusMode(false);
+    if (currentUser) renderStarter();
+  }
+});
 $("#close-dialog").onclick = () => $("#task-dialog").close();
 $("#task-dialog").addEventListener("click", (e) => {
   if (e.target === $("#task-dialog")) {
@@ -512,7 +615,11 @@ document.addEventListener(
   },
   true,
 );
-$('#evolution-dialog').addEventListener('close',()=>{clearTimeout(evolutionTimer);$('#evolution-content').innerHTML='';if(evolutionQueue.length)showNextEvolution();});
+$("#evolution-dialog").addEventListener("close", () => {
+  clearTimeout(evolutionTimer);
+  $("#evolution-content").innerHTML = "";
+  if (evolutionQueue.length) showNextEvolution();
+});
 $("#login-form").onsubmit = async (e) => {
   e.preventDefault();
   const button = $("#login-submit");
@@ -561,28 +668,38 @@ function openPasswordChange() {
       <p id="password-error" class="password-error" role="alert"></p>
       <div class="form-actions"><button type="button" class="secondary" id="cancel-password">Cancel</button><button type="submit" class="primary" id="save-password">Update password</button></div>
     </form>`);
-  $('#cancel-password').onclick = () => $('#task-dialog').close();
-  $('#password-form').onsubmit = async event => {
+  $("#cancel-password").onclick = () => $("#task-dialog").close();
+  $("#password-form").onsubmit = async (event) => {
     event.preventDefault();
-    const button = $('#save-password');
+    const button = $("#save-password");
     if (button.disabled) return;
-    const input = { currentPassword: $('#current-password').value, newPassword: $('#new-password').value, confirmPassword: $('#confirm-password').value };
-    $('#password-error').textContent = '';
-    if (input.newPassword !== input.confirmPassword) { $('#password-error').textContent = 'New passwords do not match.'; return; }
+    const input = {
+      currentPassword: $("#current-password").value,
+      newPassword: $("#new-password").value,
+      confirmPassword: $("#confirm-password").value,
+    };
+    $("#password-error").textContent = "";
+    if (input.newPassword !== input.confirmPassword) {
+      $("#password-error").textContent = "New passwords do not match.";
+      return;
+    }
     button.disabled = true;
     try {
-      await api('/password', 'POST', input);
+      await api("/password", "POST", input);
       showLogin();
-      $('#login-error').textContent = 'Password updated. Sign in again.';
+      $("#login-error").textContent = "Password updated. Sign in again.";
     } catch (error) {
-      if (!currentUser) $('#login-error').textContent = error.message;
-      else if ($('#password-error')) $('#password-error').textContent = error.message;
+      if (!currentUser) $("#login-error").textContent = error.message;
+      else if ($("#password-error"))
+        $("#password-error").textContent = error.message;
       else notify(error.message);
-      if ($('#current-password')) $('#current-password').value = '';
-    } finally { button.disabled = false; }
+      if ($("#current-password")) $("#current-password").value = "";
+    } finally {
+      button.disabled = false;
+    }
   };
 }
-$('#change-password').onclick = openPasswordChange;
+$("#change-password").onclick = openPasswordChange;
 $("#logout").onclick = async () => {
   try {
     await api("/logout", "POST");
@@ -593,9 +710,20 @@ $("#logout").onclick = async () => {
 };
 showLogin();
 async function initialize() {
-  const response=await fetch('/pokemon-catalog.json');
-  if(!response.ok)throw new Error('Cannot load Pokémon. Refresh to try again.');
-  const data=await response.json();pokemonById=new Map(data.species.map(p=>[p.id,p]));
-  const result=await api('/me');await startSession(result.user);
+  const response = await fetch("/pokemon-catalog.json");
+  if (!response.ok)
+    throw new Error("Cannot load Pokémon. Refresh to try again.");
+  const data = await response.json();
+  pokemonById = new Map(data.species.map((p) => [p.id, p]));
+  const result = await api("/me");
+  await startSession(result.user);
 }
-initialize().catch(error=>{showLogin();if(error.message!=='Please sign in.')$('#login-error').textContent=error.message;}).finally(()=>{$('#login-submit').disabled=!pokemonById.size;});
+initialize()
+  .catch((error) => {
+    showLogin();
+    if (error.message !== "Please sign in.")
+      $("#login-error").textContent = error.message;
+  })
+  .finally(() => {
+    $("#login-submit").disabled = !pokemonById.size;
+  });

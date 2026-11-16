@@ -21,33 +21,29 @@ test(
       await initializeSchema(db);
       const date = new Date(),
         passwordHash = await hashPassword("a sufficiently long test password");
-      await db
-        .collection("users")
-        .insertOne({
-          _id: "ale",
-          name: "Ale",
+      await db.collection("users").insertOne({
+        _id: "ale",
+        name: "Ale",
+        passwordHash,
+        starter: null,
+        createdAt: date,
+        updatedAt: date,
+      });
+      await assert.rejects(
+        db.collection("users").insertOne({
+          _id: "third",
+          name: "X",
           passwordHash,
           starter: null,
           createdAt: date,
           updatedAt: date,
-        });
-      await assert.rejects(
-        db
-          .collection("users")
-          .insertOne({
-            _id: "third",
-            name: "X",
-            passwordHash,
-            starter: null,
-            createdAt: date,
-            updatedAt: date,
-          }),
+        }),
         (e) => e.code === 121,
       );
       await assert.rejects(
         db
           .collection("users")
-          .updateOne({ _id: "ale" }, { $set: { starter: 7 } }),
+          .updateOne({ _id: "ale" }, { $set: { starter: 25 } }),
         (e) => e.code === 121,
       );
       const item = {

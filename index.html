@@ -3,17 +3,31 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f7f6ef" />
+    <meta name="theme-color" content="#FAF8F5" />
     <title>PokéDo — Your board</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body class="signed-out">
+  <body
+    class="signed-out"
+    data-starter="1"
+    data-scope="mine"
+    data-focus="false"
+  >
     <section class="login-screen" aria-labelledby="login-title">
       <div class="login-card">
         <span class="pokeball" aria-hidden="true"></span>
         <h1 id="login-title">Welcome to PokéDo</h1>
         <form id="login-form">
-          <label class="field">Username<input id="login-name" name="username" type="text" autocomplete="username" required maxlength="64" autocapitalize="none" spellcheck="false" /></label
+          <label class="field"
+            >Username<input
+              id="login-name"
+              name="username"
+              type="text"
+              autocomplete="username"
+              required
+              maxlength="64"
+              autocapitalize="none"
+              spellcheck="false" /></label
           ><label class="field"
             >Password<input
               id="password"
@@ -51,7 +65,9 @@
         <div class="trainer-switch">
           <span id="account-name"></span
           ><button class="secondary" id="refresh" type="button">Refresh</button
-          ><button class="secondary" id="change-password" type="button">Password</button><button class="secondary" id="logout" type="button">Sign out</button>
+          ><button class="secondary" id="change-password" type="button">
+            Password</button
+          ><button class="secondary" id="logout" type="button">Sign out</button>
         </div>
       </header>
       <main id="main">
@@ -63,12 +79,29 @@
         </div>
         <section class="welcome">
           <div>
+            <p class="eyebrow">YOUR GROWTH BUDDY</p>
             <h2>One step at a time.</h2>
             <button id="choose-starter" class="starter-trigger" type="button">
               Choose starter</button
             ><button id="welcome-focus" class="subtle-button">
               Focus <span>↗</span>
             </button>
+            <div class="buddy-progress">
+              <p id="buddy-progress-label" class="buddy-progress-label">
+                0 of 0 tasks done
+              </p>
+              <div
+                id="buddy-progress-bar"
+                class="buddy-progress-track"
+                role="progressbar"
+                aria-label="Task progress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <div id="buddy-progress-fill" class="buddy-progress-fill"></div>
+              </div>
+            </div>
           </div>
           <div class="welcome-art" aria-hidden="true">
             <div class="orbit"></div>
@@ -122,7 +155,13 @@
       </div>
       <div id="dialog-content"></div>
     </dialog>
-    <dialog id="evolution-dialog" class="evolution-dialog" aria-labelledby="evolution-title"><div id="evolution-content"></div></dialog>
+    <dialog
+      id="evolution-dialog"
+      class="evolution-dialog"
+      aria-labelledby="evolution-title"
+    >
+      <div id="evolution-content"></div>
+    </dialog>
     <div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
     <script src="app.js" defer></script>
   </body>

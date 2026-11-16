@@ -182,22 +182,22 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
   let time = new Date("2026-11-16T12:00:00Z");
   const hash = await hashPassword("a sufficiently long test password");
   for (const id of ["ale", "sharlotte"])
-    await db
-      .collection("users")
-      .insertOne({
-        _id: id,
-        name: id === "ale" ? "Ale" : "Sharlotte",
-        passwordHash: hash,
-        starter: null,
-      });
-  const handler = await createHandler({chooseCompanion:()=>252,
+    await db.collection("users").insertOne({
+      _id: id,
+      name: id === "ale" ? "Ale" : "Sharlotte",
+      passwordHash: hash,
+      starter: null,
+    });
+  const handler = await createHandler({
+    chooseCompanion: () => 252,
     db,
     origin: "http://localhost:4174",
     now: () => time,
   });
   const call = (path, options) => request(handler, path, options);
-  const health = await call('/api/health');
-  assert.equal(health.status, 200);assert.deepEqual(health.body, {ok:true});
+  const health = await call("/api/health");
+  assert.equal(health.status, 200);
+  assert.deepEqual(health.body, { ok: true });
   assert.equal((await call("/api/tasks")).status, 401);
   assert.equal((await call("/.env")).status, 404);
   assert.equal((await call("/server/db.js")).status, 404);
@@ -209,7 +209,10 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
   const login = async (login) => {
     const result = await call("/api/login", {
       method: "POST",
-      body: { login:login==='ale'?'alejoeie':'shar', password: "a sufficiently long test password" },
+      body: {
+        login: login === "ale" ? "alejoeie" : "shar",
+        password: "a sufficiently long test password",
+      },
     });
     assert.equal(result.status, 200);
     assert.equal(result.body.user.passwordHash, undefined);
@@ -217,15 +220,29 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
   };
   const ale = await login("ale"),
     sharlotte = await login("sharlotte");
-  for(const oldLogin of ['ale','sharlotte'])assert.equal((await call('/api/login',{method:'POST',body:{login:oldLogin,password:'a sufficiently long test password'}})).status,401);
+  for (const oldLogin of ["ale", "sharlotte"])
+    assert.equal(
+      (
+        await call("/api/login", {
+          method: "POST",
+          body: {
+            login: oldLogin,
+            password: "a sufficiently long test password",
+          },
+        })
+      ).status,
+      401,
+    );
   const personal = await call("/api/tasks", {
     method: "POST",
     cookie: ale,
-    body: payload({companion:6}),
+    body: payload({ companion: 6 }),
   });
   assert.equal(personal.status, 201);
-  assert.equal(personal.body.task.companion,252);
-  const catalogResponse=await call('/pokemon-catalog.json');assert.equal(catalogResponse.status,200);assert(catalogResponse.body.species.length>=1000);
+  assert.equal(personal.body.task.companion, 252);
+  const catalogResponse = await call("/pokemon-catalog.json");
+  assert.equal(catalogResponse.status, 200);
+  assert(catalogResponse.body.species.length >= 1000);
   const id = personal.body.task.id;
   assert.equal(personal.body.task.ownerId, "ale");
   assert.equal(
@@ -340,7 +357,7 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
       await call("/api/me", {
         method: "PATCH",
         cookie: sharlotte,
-        body: { starter: 7 },
+        body: { starter: 25 },
       })
     ).status,
     400,
@@ -374,150 +391,478 @@ test("API: sign-in, owner isolation, sharing, conflicts, CSRF, expiry, logout, a
   );
 });
 
-test('frontend: authenticated session, create task, refresh, focus save, and sign out', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const { createContext, runInContext } = await import('node:vm');
-  const { randomUUID } = await import('node:crypto');
+test("frontend: authenticated session, create task, refresh, focus save, and sign out", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { createContext, runInContext } = await import("node:vm");
+  const { randomUUID } = await import("node:crypto");
   const db = memoryDB();
-  await db.collection('users').insertOne({ _id:'sharlotte', name:'Sharlotte', passwordHash:await hashPassword('a sufficiently long test password'), starter:252 });
-  const handler = await createHandler({chooseCompanion:()=>252,db,origin:'http://localhost:4174'});
-  const nodes = new Map(), classes = new Set();
-  const dragCards=[], dropColumns=[]; let reducedMotion=true;
-  function node(selector) {
-    if (!nodes.has(selector)) nodes.set(selector, {
-      textContent:'',innerHTML:'',value:'',hidden:false,disabled:false,inert:false,open:false,style:{},dataset:{},classList:{add(){},remove(){}},contains:()=>false,
-      setAttribute(){},insertAdjacentHTML(){},addEventListener(){},scrollIntoView(){},
-      showModal(){this.open=true;},close(){this.open=false;},
+  await db
+    .collection("users")
+    .insertOne({
+      _id: "sharlotte",
+      name: "Sharlotte",
+      passwordHash: await hashPassword("a sufficiently long test password"),
+      starter: 252,
     });
+  const handler = await createHandler({
+    chooseCompanion: () => 252,
+    db,
+    origin: "http://localhost:4174",
+  });
+  const nodes = new Map(),
+    classes = new Set();
+  const dragCards = [],
+    dropColumns = [];
+  let reducedMotion = true;
+  function node(selector) {
+    if (!nodes.has(selector))
+      nodes.set(selector, {
+        textContent: "",
+        innerHTML: "",
+        value: "",
+        hidden: false,
+        disabled: false,
+        inert: false,
+        open: false,
+        style: {},
+        dataset: {},
+        classList: { add() {}, remove() {} },
+        contains: () => false,
+        setAttribute() {},
+        insertAdjacentHTML() {},
+        addEventListener() {},
+        scrollIntoView() {},
+        showModal() {
+          this.open = true;
+        },
+        close() {
+          this.open = false;
+        },
+      });
     return nodes.get(selector);
   }
-  node('#task-form').elements = {
-    owner:{value:'ours'},
-    assigneeId:{value:'', options:[{value:''},{value:'ale'},{value:'sharlotte'}],selectedOptions:[{value:''}]},
+  node("#task-form").elements = {
+    owner: { value: "ours" },
+    assigneeId: {
+      value: "",
+      options: [{ value: "" }, { value: "ale" }, { value: "sharlotte" }],
+      selectedOptions: [{ value: "" }],
+    },
   };
   let cookie;
-  const context=createContext({
-    document:{querySelector:node,querySelectorAll:selector=>selector==='[data-task-id]'?dragCards:selector==='.column[data-status]'?dropColumns:[],addEventListener(){},body:{classList:{add:v=>classes.add(v),remove:v=>classes.delete(v)}}},
-    fetch:async(url, options={})=>{
-      if(url==='/pokemon-catalog.json')return {ok:true,json:async()=>JSON.parse(await readFile(new URL('../data/pokemon.json',import.meta.url),'utf8'))};
-      const result=await request(handler,url,{method:options.method,body:options.body?JSON.parse(options.body):undefined,cookie});
-      if(result.headers['set-cookie'])cookie=result.headers['set-cookie'].split(';')[0];
-      return {status:result.status,ok:result.status>=200&&result.status<300,json:async()=>JSON.parse(JSON.stringify(result.body))};
+  const context = createContext({
+    document: {
+      querySelector: node,
+      querySelectorAll: (selector) =>
+        selector === "[data-task-id]"
+          ? dragCards
+          : selector === ".column[data-status]"
+            ? dropColumns
+            : [],
+      addEventListener() {},
+      body: {
+        dataset: {},
+        classList: {
+          add: (v) => classes.add(v),
+          remove: (v) => classes.delete(v),
+        },
+      },
     },
-    crypto:{randomUUID},setTimeout:()=>1,clearTimeout(){},matchMedia:()=>({matches:reducedMotion}),
-    FormData:class{constructor(target){this.fields=target.fields;}get(key){return this.fields[key]??'';}},
+    fetch: async (url, options = {}) => {
+      if (url === "/pokemon-catalog.json")
+        return {
+          ok: true,
+          json: async () =>
+            JSON.parse(
+              await readFile(
+                new URL("../data/pokemon.json", import.meta.url),
+                "utf8",
+              ),
+            ),
+        };
+      const result = await request(handler, url, {
+        method: options.method,
+        body: options.body ? JSON.parse(options.body) : undefined,
+        cookie,
+      });
+      if (result.headers["set-cookie"])
+        cookie = result.headers["set-cookie"].split(";")[0];
+      return {
+        status: result.status,
+        ok: result.status >= 200 && result.status < 300,
+        json: async () => JSON.parse(JSON.stringify(result.body)),
+      };
+    },
+    crypto: { randomUUID },
+    setTimeout: () => 1,
+    clearTimeout() {},
+    matchMedia: () => ({ matches: reducedMotion }),
+    FormData: class {
+      constructor(target) {
+        this.fields = target.fields;
+      }
+      get(key) {
+        return this.fields[key] ?? "";
+      }
+    },
   });
-  runInContext(await readFile(new URL('../app.js',import.meta.url),'utf8'),context);
-  await runInContext('initialize().catch(()=>{})',context);assert(classes.has('signed-out'));
-  node('#login-name').value='shar';node('#password').value='a sufficiently long test password';
-  await node('#login-form').onsubmit({preventDefault(){}});
-  assert(!classes.has('signed-out'));assert.equal(node('#account-name').textContent,'Sharlotte');assert.equal(node('#password').value,'');
-  runInContext('openCreate()',context);
-  await node('#task-form').onsubmit({preventDefault(){},target:{fields:{title:'Write a test',description:'A small step',steps:'Run the harness',owner:'ours',assigneeId:'ale',status:'ready',companion:'252',priority:'Low',due:'',minutes:'15'}}});
-  assert.equal(runInContext('tasks.length',context),1);
-  const stored=(await db.collection('tasks').find({}).toArray())[0];assert.equal(stored.ownerId,'sharlotte');assert.equal(stored.visibility,'shared');
-  await node('#refresh').onclick();assert.equal(runInContext('tasks.length',context),1);
+  runInContext(
+    await readFile(new URL("../app.js", import.meta.url), "utf8"),
+    context,
+  );
+  await runInContext("initialize().catch(()=>{})", context);
+  assert(classes.has("signed-out"));
+  node("#login-name").value = "shar";
+  node("#password").value = "a sufficiently long test password";
+  await node("#login-form").onsubmit({ preventDefault() {} });
+  assert(!classes.has("signed-out"));
+  assert.equal(node("#account-name").textContent, "Sharlotte");
+  assert.equal(node("#password").value, "");
+  assert.equal(runInContext("document.body.dataset.starter", context), "252");
+  runInContext("applyStarterTheme(7)", context);
+  assert.equal(runInContext("document.body.dataset.starter", context), "7");
+  runInContext("renderStarter()", context);
+  assert.equal(runInContext("document.body.dataset.starter", context), "252");
+  runInContext("openCreate()", context);
+  assert.equal(runInContext("document.body.dataset.focus", context), "false");
+  await node("#task-form").onsubmit({
+    preventDefault() {},
+    target: {
+      fields: {
+        title: "Write a test",
+        description: "A small step",
+        steps: "Run the harness",
+        owner: "ours",
+        assigneeId: "ale",
+        status: "ready",
+        companion: "252",
+        priority: "Low",
+        due: "",
+        minutes: "15",
+      },
+    },
+  });
+  assert.equal(runInContext("tasks.length", context), 1);
+  const stored = (await db.collection("tasks").find({}).toArray())[0];
+  assert.equal(stored.ownerId, "sharlotte");
+  assert.equal(stored.visibility, "shared");
+  await node("#refresh").onclick();
+  assert.equal(runInContext("tasks.length", context), 1);
   // Form is derived from status; the base species remains the persisted value.
-  for(const [base,middle,final] of [[4,'Charmeleon','Charizard'],[1,'Ivysaur','Venusaur'],[252,'Grovyle','Sceptile'],[7,'Wartortle','Blastoise']]) {
-    assert.equal(runInContext(`companionFor({companion:${base},status:'progress'}).name`,context),middle);
-    assert.equal(runInContext(`companionFor({companion:${base},status:'done'}).name`,context),final);
-    assert.equal(runInContext(`companionFor({companion:${base},status:'encounter'}).id`,context),base);
+  for (const [base, middle, final] of [
+    [4, "Charmeleon", "Charizard"],
+    [1, "Ivysaur", "Venusaur"],
+    [252, "Grovyle", "Sceptile"],
+    [7, "Wartortle", "Blastoise"],
+  ]) {
+    assert.equal(
+      runInContext(
+        `companionFor({companion:${base},status:'progress'}).name`,
+        context,
+      ),
+      middle,
+    );
+    assert.equal(
+      runInContext(
+        `companionFor({companion:${base},status:'done'}).name`,
+        context,
+      ),
+      final,
+    );
+    assert.equal(
+      runInContext(
+        `companionFor({companion:${base},status:'encounter'}).id`,
+        context,
+      ),
+      base,
+    );
   }
-  assert.equal(runInContext("companionFor({companion:25,status:'progress'}).name",context),'Pikachu');
-  assert.equal(runInContext("companionFor({companion:25,status:'done'}).name",context),'Raichu');
-  const drag=node('test-card'), column=node('test-column');
-  drag.dataset.taskId=stored._id;column.dataset.status='progress';dragCards.push(drag);dropColumns.push(column);
-  runInContext('bindDragAndDrop()',context);
-  const transfer=new Map(), dataTransfer={setData:(key,value)=>transfer.set(key,value),getData:key=>transfer.get(key)};
-  let prevented=false;
-  drag.ondragstart({dataTransfer,preventDefault(){throw new Error('Valid drag rejected');}});
-  column.ondragover({dataTransfer,preventDefault(){prevented=true;}});assert(prevented);
-  await column.ondrop({dataTransfer,preventDefault(){}});
-  assert.equal((await db.collection('tasks').findOne({_id:stored._id})).status,'progress');
-  assert.equal((await db.collection('tasks').findOne({_id:stored._id})).companion,252);
-  assert.equal(runInContext('companionFor(tasks[0]).name',context),'Grovyle');
-  const version=runInContext('tasks[0].version',context);
-  await runInContext("changeTaskStatus(tasks[0].id,'progress')",context);
-  assert.equal(runInContext('tasks[0].version',context),version);
+  assert.equal(
+    runInContext(
+      "companionFor({companion:25,status:'progress'}).name",
+      context,
+    ),
+    "Pikachu",
+  );
+  assert.equal(
+    runInContext("companionFor({companion:25,status:'done'}).name", context),
+    "Raichu",
+  );
+  const drag = node("test-card"),
+    column = node("test-column");
+  drag.dataset.taskId = stored._id;
+  column.dataset.status = "progress";
+  dragCards.push(drag);
+  dropColumns.push(column);
+  runInContext("bindDragAndDrop()", context);
+  const transfer = new Map(),
+    dataTransfer = {
+      setData: (key, value) => transfer.set(key, value),
+      getData: (key) => transfer.get(key),
+    };
+  let prevented = false;
+  drag.ondragstart({
+    dataTransfer,
+    preventDefault() {
+      throw new Error("Valid drag rejected");
+    },
+  });
+  column.ondragover({
+    dataTransfer,
+    preventDefault() {
+      prevented = true;
+    },
+  });
+  assert(prevented);
+  await column.ondrop({ dataTransfer, preventDefault() {} });
+  assert.equal(
+    (await db.collection("tasks").findOne({ _id: stored._id })).status,
+    "progress",
+  );
+  assert.equal(
+    (await db.collection("tasks").findOne({ _id: stored._id })).companion,
+    252,
+  );
+  assert.equal(runInContext("companionFor(tasks[0]).name", context), "Grovyle");
+  const version = runInContext("tasks[0].version", context);
+  await runInContext("changeTaskStatus(tasks[0].id,'progress')", context);
+  assert.equal(runInContext("tasks[0].version", context), version);
   // An external or mismatched drag cannot alter tasks.
-  column.dataset.status='done';
-  await column.ondrop({dataTransfer:{getData:()=>stored._id},preventDefault(){}});
-  assert.equal(runInContext('tasks[0].status',context),'progress');
+  column.dataset.status = "done";
+  await column.ondrop({
+    dataTransfer: { getData: () => stored._id },
+    preventDefault() {},
+  });
+  assert.equal(runInContext("tasks[0].status", context), "progress");
   // Stale moves reload the saved state rather than showing a false evolution.
-  await db.collection('tasks').updateOne({_id:stored._id},{$inc:{version:1}});
-  assert.equal(await runInContext("changeTaskStatus(tasks[0].id,'done')",context),false);
-  assert.equal(runInContext('tasks[0].status',context),'progress');
-  runInContext("playEvolution({id:4,name:'Charmander'},{id:5,name:'Charmeleon'},currentUser.id)",context);
-  assert.match(node('#toast').textContent,/Charmander → Charmeleon/);
-  assert(!node('#evolution-dialog').open);
-  reducedMotion=false;
-  runInContext("playEvolution({id:4,name:'Charmander'},{id:5,name:'Charmeleon'},currentUser.id)",context);
-  assert(node('#evolution-dialog').open);assert.match(node('#evolution-content').innerHTML,/evolution-after/);
-  node('#close-evolution').onclick();assert(!node('#evolution-dialog').open);
+  await db
+    .collection("tasks")
+    .updateOne({ _id: stored._id }, { $inc: { version: 1 } });
+  assert.equal(
+    await runInContext("changeTaskStatus(tasks[0].id,'done')", context),
+    false,
+  );
+  assert.equal(runInContext("tasks[0].status", context), "progress");
+  runInContext(
+    "playEvolution({id:4,name:'Charmander'},{id:5,name:'Charmeleon'},currentUser.id)",
+    context,
+  );
+  assert.match(node("#toast").textContent, /Charmander → Charmeleon/);
+  assert(!node("#evolution-dialog").open);
+  reducedMotion = false;
+  runInContext(
+    "playEvolution({id:4,name:'Charmander'},{id:5,name:'Charmeleon'},currentUser.id)",
+    context,
+  );
+  assert(node("#evolution-dialog").open);
+  assert.match(node("#evolution-content").innerHTML, /evolution-after/);
+  node("#close-evolution").onclick();
+  assert(!node("#evolution-dialog").open);
   // Backward transitions include same-species moves (Ready -> To do).
-  assert.equal(runInContext("evolutionTransition({companion:4,status:'done'},{companion:4,status:'progress'}).after.name",context),'Charmeleon');
-  assert.equal(runInContext("evolutionTransition({companion:4,status:'progress'},{companion:4,status:'ready'}).direction",context),'backward');
-  assert.equal(runInContext("evolutionTransition({companion:4,status:'ready'},{companion:4,status:'encounter'}).after.name",context),'Charmander');
-  assert.equal(runInContext("evolutionTransition({companion:4,status:'ready'},{companion:4,status:'ready'})",context),null);
-  runInContext("playEvolution({id:6,name:'Charizard'},{id:5,name:'Charmeleon'},currentUser.id,'backward')",context);
-  assert.match(node('#evolution-content').innerHTML,/is-devolving/);
-  assert.match(node('#evolution-content').innerHTML,/hit-mark/);
-  assert.match(node('#evolution-content').innerHTML,/Charizard took a hit!/);
-  node('#close-evolution').onclick();
-  reducedMotion=true;
-  runInContext("playEvolution({id:6,name:'Charizard'},{id:5,name:'Charmeleon'},currentUser.id,'backward')",context);
-  assert(!node('#evolution-dialog').open);assert.match(node('#toast').textContent,/Charizard → Charmeleon/);
-  assert(await runInContext("changeTaskStatus(tasks[0].id,'done')",context));
-  assert(await runInContext("changeTaskStatus(tasks[0].id,'progress')",context));
-  assert.equal((await db.collection('tasks').findOne({_id:stored._id})).status,'progress');
-  assert.equal(runInContext('companionFor(tasks[0]).name',context),'Grovyle');
-  assert(await runInContext("changeTaskStatus(tasks[0].id,'ready')",context));
-  assert.equal(runInContext('companionFor(tasks[0]).name',context),'Treecko');
+  assert.equal(
+    runInContext(
+      "evolutionTransition({companion:4,status:'done'},{companion:4,status:'progress'}).after.name",
+      context,
+    ),
+    "Charmeleon",
+  );
+  assert.equal(
+    runInContext(
+      "evolutionTransition({companion:4,status:'progress'},{companion:4,status:'ready'}).direction",
+      context,
+    ),
+    "backward",
+  );
+  assert.equal(
+    runInContext(
+      "evolutionTransition({companion:4,status:'ready'},{companion:4,status:'encounter'}).after.name",
+      context,
+    ),
+    "Charmander",
+  );
+  assert.equal(
+    runInContext(
+      "evolutionTransition({companion:4,status:'ready'},{companion:4,status:'ready'})",
+      context,
+    ),
+    null,
+  );
+  runInContext(
+    "playEvolution({id:6,name:'Charizard'},{id:5,name:'Charmeleon'},currentUser.id,'backward')",
+    context,
+  );
+  assert.match(node("#evolution-content").innerHTML, /is-devolving/);
+  assert.match(node("#evolution-content").innerHTML, /hit-mark/);
+  assert.match(node("#evolution-content").innerHTML, /Charizard took a hit!/);
+  node("#close-evolution").onclick();
+  reducedMotion = true;
+  runInContext(
+    "playEvolution({id:6,name:'Charizard'},{id:5,name:'Charmeleon'},currentUser.id,'backward')",
+    context,
+  );
+  assert(!node("#evolution-dialog").open);
+  assert.match(node("#toast").textContent, /Charizard → Charmeleon/);
+  assert(await runInContext("changeTaskStatus(tasks[0].id,'done')", context));
+  assert(
+    await runInContext("changeTaskStatus(tasks[0].id,'progress')", context),
+  );
+  assert.equal(
+    (await db.collection("tasks").findOne({ _id: stored._id })).status,
+    "progress",
+  );
+  assert.equal(runInContext("companionFor(tasks[0]).name", context), "Grovyle");
+  assert(await runInContext("changeTaskStatus(tasks[0].id,'ready')", context));
+  assert.equal(runInContext("companionFor(tasks[0]).name", context), "Treecko");
 
-
-  runInContext('openFocus(tasks[0].id)',context);
-  await node('#complete-step').onclick();assert.equal((await db.collection('tasks').findOne({_id:stored._id})).steps[0].done,true);
-  await node('#complete-step').onclick();assert.equal((await db.collection('tasks').findOne({_id:stored._id})).status,'done');
-  node('#change-password').onclick();
-  node('#current-password').value='a sufficiently long test password';
-  node('#new-password').value='a different and long test password';
-  node('#confirm-password').value='not the same';
-  await node('#password-form').onsubmit({preventDefault(){}});
-  assert.equal(node('#password-error').textContent,'New passwords do not match.');
-  node('#confirm-password').value='a different and long test password';
-  await node('#password-form').onsubmit({preventDefault(){}});
-  assert(classes.has('signed-out'));assert.equal(runInContext('tasks.length',context),0);
-  assert.equal(node('#login-error').textContent,'Password updated. Sign in again.');
-  assert(await verifyPassword('a different and long test password',(await db.collection('users').findOne({_id:'sharlotte'})).passwordHash));
+  runInContext("openFocus(tasks[0].id)", context);
+  assert.equal(node("#task-dialog").dataset.view, "focus");
+  assert.equal(runInContext("document.body.dataset.focus", context), "true");
+  await node("#complete-step").onclick();
+  assert.equal(
+    (await db.collection("tasks").findOne({ _id: stored._id })).steps[0].done,
+    true,
+  );
+  await node("#complete-step").onclick();
+  assert.equal(
+    (await db.collection("tasks").findOne({ _id: stored._id })).status,
+    "done",
+  );
+  node("#change-password").onclick();
+  node("#current-password").value = "a sufficiently long test password";
+  node("#new-password").value = "a different and long test password";
+  node("#confirm-password").value = "not the same";
+  await node("#password-form").onsubmit({ preventDefault() {} });
+  assert.equal(
+    node("#password-error").textContent,
+    "New passwords do not match.",
+  );
+  node("#confirm-password").value = "a different and long test password";
+  await node("#password-form").onsubmit({ preventDefault() {} });
+  assert(classes.has("signed-out"));
+  assert.equal(runInContext("tasks.length", context), 0);
+  assert.equal(
+    node("#login-error").textContent,
+    "Password updated. Sign in again.",
+  );
+  assert(
+    await verifyPassword(
+      "a different and long test password",
+      (await db.collection("users").findOne({ _id: "sharlotte" })).passwordHash,
+    ),
+  );
 });
 
-test('password change: validates current password, revokes own sessions, preserves partner and tasks', async () => {
-  const db=memoryDB(), oldPassword='a sufficiently long test password', newPassword='a different and long test password';
-  const hash=await hashPassword(oldPassword);
-  for(const id of ['ale','sharlotte'])await db.collection('users').insertOne({_id:id,name:id,passwordHash:hash,starter:252});
-  const handler=await createHandler({chooseCompanion:()=>252,db,origin:'http://localhost:4174'});
-  const login=async(id,password=oldPassword)=>request(handler,'/api/login',{method:'POST',body:{login:id==='ale'?'alejoeie':'shar',password}});
-  const first=await login('ale'), second=await login('ale'), partner=await login('sharlotte');
-  const cookie=r=>r.headers['set-cookie'].split(';')[0];
-  const change=(body,auth=cookie(first),origin='http://localhost:4174')=>request(handler,'/api/password',{method:'POST',cookie:auth,origin,body});
-  const input={currentPassword:oldPassword,newPassword,confirmPassword:newPassword};
-  const created=await request(handler,'/api/tasks',{method:'POST',cookie:cookie(first),body:payload()});
-  const updated=await change(input);assert.equal(updated.status,200);assert.match(updated.headers['set-cookie'],/Max-Age=0/);
-  assert(await db.collection('tasks').findOne({_id:created.body.task.id}));
+test("password change: validates current password, revokes own sessions, preserves partner and tasks", async () => {
+  const db = memoryDB(),
+    oldPassword = "a sufficiently long test password",
+    newPassword = "a different and long test password";
+  const hash = await hashPassword(oldPassword);
+  for (const id of ["ale", "sharlotte"])
+    await db
+      .collection("users")
+      .insertOne({ _id: id, name: id, passwordHash: hash, starter: 252 });
+  const handler = await createHandler({
+    chooseCompanion: () => 252,
+    db,
+    origin: "http://localhost:4174",
+  });
+  const login = async (id, password = oldPassword) =>
+    request(handler, "/api/login", {
+      method: "POST",
+      body: { login: id === "ale" ? "alejoeie" : "shar", password },
+    });
+  const first = await login("ale"),
+    second = await login("ale"),
+    partner = await login("sharlotte");
+  const cookie = (r) => r.headers["set-cookie"].split(";")[0];
+  const change = (
+    body,
+    auth = cookie(first),
+    origin = "http://localhost:4174",
+  ) =>
+    request(handler, "/api/password", {
+      method: "POST",
+      cookie: auth,
+      origin,
+      body,
+    });
+  const input = {
+    currentPassword: oldPassword,
+    newPassword,
+    confirmPassword: newPassword,
+  };
+  const created = await request(handler, "/api/tasks", {
+    method: "POST",
+    cookie: cookie(first),
+    body: payload(),
+  });
+  const updated = await change(input);
+  assert.equal(updated.status, 200);
+  assert.match(updated.headers["set-cookie"], /Max-Age=0/);
+  assert(await db.collection("tasks").findOne({ _id: created.body.task.id }));
   // First successful change signs out both Ale sessions.
-  for(const session of [first,second])assert.equal((await request(handler,'/api/me',{cookie:cookie(session)})).status,401);
-  assert.equal((await request(handler,'/api/me',{cookie:cookie(partner)})).status,200);
-  assert.equal((await login('ale',oldPassword)).status,401);
-  const fresh=await login('ale',newPassword);assert.equal(fresh.status,200);
-  assert.equal((await db.collection('users').findOne({_id:'ale'})).starter,252);
-  assert.equal((await db.collection('users').findOne({_id:'sharlotte'})).passwordHash,hash);
-  const current={currentPassword:newPassword,newPassword:oldPassword,confirmPassword:oldPassword};
-  assert.equal((await change(current,cookie(fresh),'https://evil.example')).status,403);
-  assert.equal((await request(handler,'/api/password',{method:'POST',body:current})).status,401);
-  assert.equal((await change({...current,currentPassword:'wrong'},cookie(fresh))).status,400);
-  assert.equal((await change({...current,confirmPassword:'different'},cookie(fresh))).status,400);
-  assert.equal((await change({...current,newPassword:'short',confirmPassword:'short'},cookie(fresh))).status,400);
-  assert.equal((await change({...current,newPassword:newPassword,confirmPassword:newPassword},cookie(fresh))).status,400);
-  assert.equal((await change(current,cookie(fresh))).status,429);
-  assert.equal((await login('ale',newPassword)).status,200);
+  for (const session of [first, second])
+    assert.equal(
+      (await request(handler, "/api/me", { cookie: cookie(session) })).status,
+      401,
+    );
+  assert.equal(
+    (await request(handler, "/api/me", { cookie: cookie(partner) })).status,
+    200,
+  );
+  assert.equal((await login("ale", oldPassword)).status, 401);
+  const fresh = await login("ale", newPassword);
+  assert.equal(fresh.status, 200);
+  assert.equal(
+    (await db.collection("users").findOne({ _id: "ale" })).starter,
+    252,
+  );
+  assert.equal(
+    (await db.collection("users").findOne({ _id: "sharlotte" })).passwordHash,
+    hash,
+  );
+  const current = {
+    currentPassword: newPassword,
+    newPassword: oldPassword,
+    confirmPassword: oldPassword,
+  };
+  assert.equal(
+    (await change(current, cookie(fresh), "https://evil.example")).status,
+    403,
+  );
+  assert.equal(
+    (await request(handler, "/api/password", { method: "POST", body: current }))
+      .status,
+    401,
+  );
+  assert.equal(
+    (await change({ ...current, currentPassword: "wrong" }, cookie(fresh)))
+      .status,
+    400,
+  );
+  assert.equal(
+    (await change({ ...current, confirmPassword: "different" }, cookie(fresh)))
+      .status,
+    400,
+  );
+  assert.equal(
+    (
+      await change(
+        { ...current, newPassword: "short", confirmPassword: "short" },
+        cookie(fresh),
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await change(
+        { ...current, newPassword: newPassword, confirmPassword: newPassword },
+        cookie(fresh),
+      )
+    ).status,
+    400,
+  );
+  assert.equal((await change(current, cookie(fresh))).status, 429);
+  assert.equal((await login("ale", newPassword)).status, 200);
 });

@@ -126,3 +126,9 @@ The fixed login identifiers are `alejoeie` and `shar`. Internal account IDs rema
 `data/pokemon.json` caches 1,025 species and 541 unevolved species from PokéAPI's CSV dataset. `server/pokemon.js` selects uniformly from base species using Node's crypto randomInt. The server provides cached metadata at `/pokemon-catalog.json`; it does not call PokéAPI during task creation. Legacy task species remain valid even if later games introduced pre-evolutions. The user-selected starter remains the profile companion and does not affect random task assignment.
 
 When deploying catalog changes, run schema initialization against Atlas first to expand the allowed companion IDs. This changes validators/indexes only and does not reset accounts or modify tasks.
+
+## Visual theme
+
+Warm off-white canvas, white surfaces, slate text, and neutral task cards. Teal identifies Focus; lavender identifies Ours; amber carries priorities and alerts. Starter color is limited to primary actions, active personal states, and the Growth Buddy widget. Bulbasaur and Treecko use mint, Charmander peach, and Squirtle sky blue. The starter picker previews a theme; closing it restores the saved choice, and confirming persists it. Focus styling is local to the Focus dialog and navigation.
+
+DM Sans is the primary reading font, with larger card text and form inputs. Colors transition briefly, honoring reduced-motion preferences. Critical text pairs are checked at 4.5:1 and control boundaries/focus indicators at 3:1 in `test/theme.test.js`; this does not replace a full browser accessibility audit. The travel-planner route is deferred until a later implementation step.
