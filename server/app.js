@@ -1,3 +1,4 @@
+import { validateOrigin } from "./config.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
@@ -53,13 +54,7 @@ export async function createHandler({
   production = false,
   now = () => new Date(),
 }) {
-  if (
-    new URL(origin).origin !== origin ||
-    (production && !origin.startsWith("https://"))
-  )
-    throw new Error(
-      "APP_ORIGIN must be an exact origin; production requires HTTPS.",
-    );
+  validateOrigin(origin,production);
   const dummyHash = await hashPassword(newToken());
   async function user(req) {
     const token = readToken(req.headers.cookie);

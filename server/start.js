@@ -1,13 +1,15 @@
 import { createServer } from "node:http";
 import { connectDatabase } from "./db.js";
 import { createHandler } from "./app.js";
+import { StartupError, validateOrigin, startupMessage } from "./config.js";
 let connection;
 try {
   const port = Number(process.env.PORT || 4174);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
-    throw new Error("Invalid PORT.");
+    throw new StartupError("Invalid PORT.");
   const production = process.env.NODE_ENV === "production";
   const origin = process.env.APP_ORIGIN || `http://localhost:${port}`;
+  validateOrigin(origin,production);
   connection = await connectDatabase();
   const handler = await createHandler({
     db: connection.db,
@@ -29,11 +31,7 @@ try {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 } catch (error) {
-  console.error(
-    error.message === "Invalid PORT."
-      ? error.message
-      : "Startup failed. Check .env, Atlas network access, and run npm run db:setup.",
-  );
+  console.error(`Startup failed: ${startupMessage(error)}`);
   if (connection) await connection.close();
   process.exitCode = 1;
 }

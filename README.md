@@ -116,3 +116,5 @@ Successful form changes and backward moves show a dismissible sprite animation. 
 ## Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for GitHub Actions, Render, Atlas network access, and the separate `pokedo.alebyte.me` subdomain. `npm start` loads a local `.env` if present and also supports hosting environment variables without an `.env` file.
+
+Startup logs report missing URI, invalid origin, authentication, and network-access problems without printing MongoDB errors or secrets. On Render, the message that `.env` is absent is expected: configure the service Environment variables instead.
